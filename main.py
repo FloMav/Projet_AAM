@@ -1,16 +1,21 @@
-# This is a sample Python script.
+import pandas as pd
 
-# Press ⌃R to execute it or replace it with your code.
-# Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
+df = pd.read_csv("Data/DATA_PROJECT.csv", index_col=0)
 
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press ⌘F8 to toggle the breakpoint.
+corrMatrix = df.corr()
+print(corrMatrix)
 
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
+# 1. Hierarchical clustering
+# ✓ PCA decomposition of the covariance matrix. ✓ Features = ARP exposures to PCs
+# ✓ Dendrogram
+# - Ward linkage
+# - Euclidean distance
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+# pca = PCA()
+# x_train = pca.fit_transform(x_train)
+# x_val = pca.transform(x_val)
+# explained_variance = pca.explained_variance_ratio_
+# res_PCA = pd.DataFrame({'Expl. variance' : np.round(explained_variance,2)}, index = ['PCA' + str(i) for i in range(9)])
+# res_PCA
+# plt.plot(res_PCA)
