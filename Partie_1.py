@@ -176,4 +176,16 @@ def global_port(row_cluster, row_weights):
 
     return row_weights
 
-print(global_port(df_cluster.iloc[0,:],df_weights.iloc[0,:]))
+def dataframe_global_weights(df_cluster, df_weights):
+    df_global_weights=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
+    for i in range(36,len(returns)):
+        df_global_weights.iloc[i - 36, :]=global_port(df_cluster[i-36,:],df_weights[i-36,:])
+
+    return df_global_weights
+
+df_glob_weights=dataframe_global_weights(df_cluster,df_weights)
+print(df_glob_weights)
+
+# check si les poids somment bien à 1 au niveau global
+for i in range(len(df_glob_weights)):
+    print(df_glob_weights.iloc[i,:].sum())
