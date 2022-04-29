@@ -44,6 +44,20 @@ def fonction_moise(aray_1_2):
 
     return col_1, col_2
 
+def recombinator(array_1,array_2,col_1,col_2):
+    combinator=np.zeros(46)
+    v1 = 0
+    for i in col_1:
+        combinator[i] = array_1[v1]
+        v1 = 1 + v1
+
+    v2 = 0
+    for i in col_2:
+        combinator[i] = array_2[v2]
+        v2 = 1 + v2
+
+    return combinator
+
 ## calcul du z_score pour r mom
 def r_mom(df_returns, i):
     return df_returns.iloc[i - 11:i].mean()
@@ -54,17 +68,7 @@ def z_score(array_1_2, array_values):
     val_1 = preprocessing.scale(array_values.iloc[col_1], axis=0)
     val_2 = preprocessing.scale(array_values.iloc[col_2], axis=0)
 
-    z_scores = np.zeros(46)
-
-    v1 = 0
-    for i in col_1:
-        z_scores[i] = val_1[v1]
-        v1 = 1 + v1
-
-    v2 = 0
-    for i in col_2:
-        z_scores[i] = val_2[v2]
-        v2 = 1 + v2
+    z_scores = recombinator(val_1,val_2,col_1,col_2)
 
     return z_scores
 
@@ -114,17 +118,33 @@ df_Mom=dataframe_Mom(df_Smom,df_Rmom)
 print(df_Mom)
 
 #ébauche étape 3 mais à adapter aux inputs
-# def long_short(row_cluster_score, returns_cluster):
-#     median = row_cluster_score.median()
-#     long_weights = []
-#     short_weights = []
-#     covReturns = np.cov(returns_cluster, rowvar=False)
-#     InvVolWeightAssets_Risk = 1 / np.sqrt(np.diagonal(covReturns))
-#     SumInvVolWeightAssets_Risk = np.sum(1 / np.sqrt(np.diagonal(covReturns)))
-#
-#     for i in range(len(row_cluster_score)):
-#         if row_cluster_score[i] >= median:
-#             long_weight.append(InvVolWeightAssets_Risk[i] / SumInvVolWeightAssets_Risk)
-#         else:
-#             short_weight.append(-InvVolWeightAssets_Risk[i] / SumInvVolWeightAssets_Risk)
-#     return long_weights, short_weights
+
+def long_short(row_cluster_score, returns_cluster):
+    median = row_cluster_score.median()
+    weights = []
+    covReturns = np.cov(returns_cluster, rowvar=False)
+    InvVolWeightAssets_Risk = 1 / np.sqrt(np.diagonal(covReturns))
+    SumInvVolWeightAssets_Risk = np.sum(1 / np.sqrt(np.diagonal(covReturns)))
+
+    for i in range(len(row_cluster_score)):
+        if row_cluster_score[i] >= median:
+            weights.append(InvVolWeightAssets_Risk[i] / SumInvVolWeightAssets_Risk)
+        else:
+            weights.append(-InvVolWeightAssets_Risk[i] / SumInvVolWeightAssets_Risk)
+    return weights
+
+def dataframe_weights(returns,df_cluster, df_Mom):
+    df_Weights=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
+    for i in range(36,len(returns)):
+        col_1, col_2 = fonction_moise(df_cluster.iloc[i-36,:])
+
+        weights_1=long_short(df_Mom.iloc[i-36,col_1],returns.iloc[:i,col_1])
+        weights_2 = long_short(df_Mom.iloc[i - 36, col_2], returns.iloc[:i, col_2])
+
+        weights=recombinator(weights_1,weights_2,col_1,col_2)
+
+        df_Weights.iloc[i - 36, :]=weights
+    return df_Weights
+
+df_weights=dataframe_weights(returns,df_cluster,df_Mom)
+print(df_weights)
