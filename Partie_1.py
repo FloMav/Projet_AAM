@@ -6,6 +6,7 @@ import statsmodels.api as sm
 import numpy as np
 import scipy.stats as stats
 from statsmodels.regression.rolling import RollingOLS
+from matplotlib import pyplot as plt
 import Sup_funcs as sf
 
 # Import dataframe
@@ -35,15 +36,15 @@ def clusterisation(returns_range: pd.DataFrame) -> np.ndarray:
 
 def dataframe_clusters() -> pd.DataFrame:
     """
-    For the first date t=35, the function takes 35 lines of data to create the clusters. For the second the date t=36,
-    the function takes 36 lines of datas and so on.
+    For the first date t=35, the function takes 36 lines of data to create the clusters. For the second the date t=36,
+    the function takes 37 lines of datas and so on.
     :return: a dataframe with the clusters for each tickers at each date.
         The index starts at 31/07/2008 and there is all the columns except the market.
     """
 
     df_clust = pd.DataFrame(0, columns=df_returns.columns, index=df_returns.index[35:])
     for i in range(35, len(df_returns)):
-        df_clust.iloc[i - 35, :] = clusterisation(df_returns.iloc[:i, :])
+        df_clust.iloc[i - 35, :] = clusterisation(df_returns.iloc[i-11:i, :])
 
     return df_clust
 
@@ -200,7 +201,8 @@ def long_short_weights() -> pd.DataFrame:
     """
 
     df_w = pd.DataFrame(columns=df_returns.columns, index=df_returns.index[35:])
-    df_vol = df_returns.expanding().std().iloc[35:, :]
+    #df_vol = df_returns.expanding().std().iloc[35:, :]
+    df_vol = df_returns.rolling(5).std().iloc[35:, :]
 
     for r in range(df_w.shape[0]):
         df_MOM_inter = df_MOM.iloc[[r]]
@@ -220,9 +222,13 @@ def long_short_weights() -> pd.DataFrame:
         def inv_vol_weight(x): return (1 / x) / np.sum((1 / x))
 
         df_inv_vol_weight_1_long = df_vol_1_long.apply(inv_vol_weight).transpose()
+        #print(df_inv_vol_weight_1_long)
         df_inv_vol_weight_1_short = df_vol_1_short.apply(inv_vol_weight).transpose() * -1
+        #print(df_inv_vol_weight_1_short.sum())
         df_inv_vol_weight_2_long = df_vol_2_long.apply(inv_vol_weight).transpose()
+        #print(df_inv_vol_weight_2_long.sum())
         df_inv_vol_weight_2_short = df_vol_2_short.apply(inv_vol_weight).transpose() * -1
+        #print(df_inv_vol_weight_2_short.sum())
         ###################################################################################
 
         df_weights_inter = pd.concat([df_inv_vol_weight_1_long, df_inv_vol_weight_1_short,
@@ -236,9 +242,9 @@ def long_short_weights() -> pd.DataFrame:
 
 df_weights = long_short_weights()
 
-# # check si les poids somment bien à 1 au niveau global
-# for i in range(len(df_w)):
-#      print(df_w.iloc[i,:].sum())
+# check si les poids somment bien à 1 au niveau global
+# for i in range(len(df_weights)):
+#      print(df_weights.iloc[i,:].sum())
 
 ################################################################# STEP 4 ###############################################
 def global_weights() -> pd.DataFrame:
@@ -275,23 +281,31 @@ def global_weights() -> pd.DataFrame:
 
 df_global_weights = global_weights()
 #df_global_weights.to_csv('Data/gw.csv')
-print(df_global_weights)
+#print(df_global_weights)
 
 # # check si les poids somment bien à 1 au niveau global
 # for i in range(len(df_global_weights)):
 #      print(df_global_weights.iloc[i, :].sum())
 
 def track():
-    df_track = df_global_weights * df_returns
-    df_track = df_track.sum(1) * 1000000
+    df_ret = df_returns.iloc[36:, :]
+    df_g_w = df_global_weights.shift().dropna(axis=0)
+    df_track = df_g_w * df_ret
+    df_track = df_track.sum(1).add(1).fillna(1).cumprod() * 100
+    print(df_ret)
+    print(df_g_w)
     print(df_track)
+    market_port = df_market[36:].add(1).fillna(1).cumprod() * 100
+    plt.plot(df_market.index[36:], df_track, color='red', label='strategy')
+    plt.plot(df_market.index[36:], market_port, color='blue', label='market')
+    plt.legend()
+    plt.show()
     pass
-
 
 track()
 
 
-################################################################# STEP 4 ###############################################
+################################################################# STEP 5 ###############################################
 
 
 
