@@ -1,121 +1,153 @@
 import pandas as pd
 from sklearn import preprocessing
-from scipy.spatial.distance import pdist, squareform
-from scipy.cluster.hierarchy import dendrogram, linkage, fcluster, cut_tree
-from matplotlib import pyplot as plt
-import numpy as np
+from scipy.spatial.distance import pdist
+from scipy.cluster.hierarchy import linkage, fcluster
 import statsmodels.api as sm
+import numpy as np
 import scipy.stats as stats
-from statsmodels.regression.linear_model import OLS
+from statsmodels.regression.rolling import RollingOLS
 
-
+# Import dataframe
 df = pd.read_csv("Data/DATA_PROJECT.csv", index_col=0)
 corrMatrix = df.corr()
 
-market = df.iloc[:, -1]
-returns = df.drop(df.columns[-1], axis=1)
+df_market = df.iloc[:, -1]
+df_returns = df.drop(df.columns[-1], axis=1)
 
-## construction data frame avec les clusters
-def clusterisation(returns):
-    returns=preprocessing.scale(returns, axis=1)
-    dist = pdist(returns.T, 'correlation')
+
+def clusterisation(returns_range: pd.DataFrame) -> np.ndarray:
+    """
+    :param returns_range: a data range used to create the clusters at date t
+    :return: an array of 1 and 2 with shape  (1,len(returns_range.columns))
+    """
+    returns_range = preprocessing.scale(returns_range, axis=1)
+    dist = pdist(returns_range.T, 'correlation')
     output = linkage(dist, method='ward')
+    n_clust = 2
+    clusters = fcluster(output, n_clust, criterion='maxclust')
+    return clusters
 
-    n_clust=2
-    clusters = fcluster(output, n_clust,criterion='maxclust')
 
-    return  clusters
-
-def dataframe_clusters(returns):
-    df_clust=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
-    for i in range(36,len(returns)):
-        df_clust.iloc[i-36,:]=clusterisation(returns.iloc[:i,:])
+def dataframe_clusters(df_ret: pd.DataFrame) -> pd.DataFrame:
+    """
+    For the first date t=35, the function takes 35 lines of data to create the clusters. For the second the date t=36,
+    the function takes 36 lines of datas and so on.
+    :param df_ret: the initial dataframe with the returns for all the tickers without the market
+    :return: an
+    """
+    df_clust = pd.DataFrame(0, columns=df_ret.columns, index=df_ret.index[35:])
+    for i in range(35, len(df_ret)):
+        df_clust.iloc[i - 35, :] = clusterisation(df_ret.iloc[:i, :])
     return df_clust
 
-# identification des indices de colonnes pour chaque cluster
-def fonction_moise(aray_1_2):
-    col_1 = []
-    col_2 = []
-    for i in range(len(aray_1_2)):
-        if aray_1_2[i] == 1:
-            col_1.append(i)
-        else:
-            col_2.append(i)
 
-    return col_1, col_2
+def z_score(df_value: pd.DataFrame, df_clust: pd.DataFrame) -> pd.DataFrame:
+    """
+    The function loops on each rows of the dataframe and create two different series according to the clusters. Then it
+    applies the z-score on each series separately and recombine them.
+    :param df_value: dataframe containing the value on which to apply the z-score
+    :param df_clust: same dataframe above but with the clusters instead of the values
+    :return: same dataframe as above but with the within-cluster cross-sectional z-score applied
+    """
+    #print(df_value)
+    #print(df_clust)
+    df_value = df_value.apply(pd.to_numeric, errors='coerce')
+    df_output = pd.DataFrame(columns=df_value.columns)
+    for r in range(df_value.shape[0]):
+        df_output_inter = df_value.iloc[[r]]
+        df_inter = df_clust.iloc[[r]]
 
-def recombinator(array_1,array_2,col_1,col_2):
-    combinator=np.zeros(46)
-    v1 = 0
-    for i in col_1:
-        combinator[i] = array_1[v1]
-        v1 = 1 + v1
+        columns_1 = df_inter[df_inter == 1].dropna(axis=1).columns.values
+        columns_2 = df_inter[df_inter == 2].dropna(axis=1).columns.values
 
-    v2 = 0
-    for i in col_2:
-        combinator[i] = array_2[v2]
-        v2 = 1 + v2
+        df_output_1 = df_output_inter.drop(columns_2, axis=1)
+        df_output_2 = df_output_inter.drop(columns_1, axis=1)
 
-    return combinator
+        df_output_1 = stats.zscore(df_output_1, axis=None)
+        df_output_2 = stats.zscore(df_output_2, axis=None)
 
-## calcul du z_score pour r mom
-def r_mom(df_returns, i):
-    return df_returns.iloc[i - 11:i].mean()
+        df_output_inter = pd.concat([df_output_1, df_output_2], axis=1)
+        df_output = pd.concat([df_output, df_output_inter], axis=0)
 
-def z_score(array_1_2, array_values):
-    col_1, col_2 = fonction_moise(array_1_2)
+    return df_output
 
-    val_1 = preprocessing.scale(array_values.iloc[col_1], axis=0)
-    val_2 = preprocessing.scale(array_values.iloc[col_2], axis=0)
 
-    z_scores = recombinator(val_1,val_2,col_1,col_2)
+print()
 
-    return z_scores
 
-def dataframe_Rmom(returns, df_cluster):
-    df_Rmom=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
-    for i in range(36,len(returns)):
-        rmom=r_mom(returns.iloc[:i,:],i)
-        df_Rmom.iloc[i - 36, :]=z_score(df_cluster.iloc[i-36,:],rmom)
-    return df_Rmom
+def R_MOM(df_ret: pd.DataFrame) -> pd.DataFrame:
+    """
+    - Do the r_mom(s,t)
+    - Apply the within-cluster cross sectional z-score
+    :param df_ret: the initial dataframe with the returns for all the tickers without the market
+    :return: a dataframe of the same size as the initial (index, columns) with computation done for the R_MOM(s,t)
+    """
+    # r_mom 12-month return momentum
+    df_output = df_ret.shift().rolling(11).apply(lambda x: x.mean())
+    df_output = df_output.iloc[35:, :]  # dataframe that starts at 31/07/2008
 
-df_cluster=dataframe_clusters(returns)
-print(df_cluster)
+    #  within-cluster cross-sectional z-score
+    df_cluster = dataframe_clusters(df_ret)  # dataframe that starts at 31/07/2008
+    df_output = z_score(df_output, df_cluster)
+    return df_output
 
-df_Rmom= dataframe_Rmom(returns,df_cluster)
-print(df_Rmom)
 
-#df_Rmom.to_csv('Data\Rmom_test.csv', sep=';')
+def s_mom(df_ret: pd.DataFrame) -> pd.DataFrame:
+    """
+    For each columns c:
+        - We perform a rolling regression on a 36 windows. We get as many alphas and betas as there are 36 windows in
+        the column.
+        - Then, we retrieve the errors. For each alpha and beta, we retrieve the last 12 errors (errors computed with
+        those specific alpha and beta).
+    :param df_ret: the initial dataframe with the returns for all the tickers without the market
+    :return: a dataframe of the same size as the initial (index, columns) with computation done for the s_mom(s,t)
+    """
+    alpha_beta_error = {}
+    error = {}
+    df_output = pd.DataFrame(index = df.index, columns=df.columns)
+    for c in df.columns:
+        #Retrive the alpha and beta for a 36 windows for the whole list
+        alpha_beta_error[c] = pd.DataFrame(RollingOLS(df[c].values, sm.add_constant(df_market.values), window=36).fit().params)
 
-## calcul du z_score pour s mom
-def s_mom(df_returns, market, i):
-    s_moms = []
-    for col in range(len(df_returns.columns)):
-        model = OLS(df_returns.iloc[i - 36:i, col].values, sm.add_constant(market.iloc[i - 36:i].values)).fit()
-        alpha = model.params[0]
-        sum_resid = model.resid[-12:].sum()
-        s_mom = (12 * alpha + sum_resid) / 12
-        s_moms.append(s_mom)
+        #Compute the errors for each alpha and beta
+        error[c] = {}
+        for model in range(len(alpha_beta_error[c].index)):
+            error[c][model] = {}
+            for i in range(12):
+                error[c][model][i] = df[c][model-i] - (alpha_beta_error[c][0][model] + alpha_beta_error[c][1][model] * df_market[model-i])
+            df_output[c][model] = alpha_beta_error[c][0][model] + np.array(list(error[c][model].values())).mean()
+    return df_output
 
-    return pd.Series(s_moms)
 
-def dataframe_Smom(returns, df_cluster):
-    df_Smom=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
-    for i in range(36,len(returns)):
-        smom=s_mom(returns.iloc[:i,:], market,i)
-        df_Smom.iloc[i - 36, :]=z_score(df_cluster.iloc[i-36,:],smom)
-    return df_Smom
+def S_MOM(df_ret: pd.DataFrame) -> pd.DataFrame:
+    """
+    - Do the s_mom(s,t)
+    - Apply the within-cluster cross sectional z-score
+    :param df_ret: the initial dataframe with the returns for all the tickers without the market
+    :return: a dataframe of the same size as the initial (index, columns) with computation done for the S_MOM(s,t)
+    """
+    # s_mom 12-month return momentum
+    df_output = s_mom(df_ret)
+    df_output = df_output.iloc[35:, :]  # dataframe that starts at 31/07/2008
+    df_output.drop('EUROSTOXX 50 TR index', axis=1, inplace=True)  # dataframe that starts at 31/07/2008
+    #  within-cluster cross-sectional z-score
+    df_cluster = dataframe_clusters(df_ret)  # dataframe that starts at 31/07/2008
+    df_output = z_score(df_output, df_cluster)
+    return df_output
 
-df_Smom= dataframe_Smom(returns,df_cluster)
-print(df_Smom)
 
-def dataframe_Mom(df_Smom,df_Rmom):
-    df_Mom = pd.DataFrame(0, columns=df_Smom.columns, index=df_Smom.index)
-    df_Mom=(df_Smom+df_Rmom)/2
-    return df_Mom
+#print(S_MOM(df_returns))
 
-df_Mom=dataframe_Mom(df_Smom,df_Rmom)
-print(df_Mom)
+
+
+
+
+
+
+
+
+
+
 
 # étape 3
 
