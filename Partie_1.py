@@ -44,7 +44,7 @@ def dataframe_clusters() -> pd.DataFrame:
 
     df_clust = pd.DataFrame(0, columns=df_returns.columns, index=df_returns.index[35:])
     for i in range(35, len(df_returns)):
-        df_clust.iloc[i - 35, :] = clusterisation(df_returns.iloc[i-11:i, :])
+        df_clust.iloc[i - 35, :] = clusterisation(df_returns.iloc[:i, :])
 
     return df_clust
 
