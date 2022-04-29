@@ -6,6 +6,7 @@ import statsmodels.api as sm
 import numpy as np
 import scipy.stats as stats
 from statsmodels.regression.rolling import RollingOLS
+import Sup_funcs as sf
 
 # Import dataframe
 df = pd.read_csv("Data/DATA_PROJECT.csv", index_col=0)
@@ -22,53 +23,52 @@ def clusterisation(returns_range: pd.DataFrame) -> np.ndarray:
     :param returns_range: a data range used to create the clusters at date t
     :return: an array of 1 and 2 with shape  (1,len(returns_range.columns))
     """
+
     returns_range = preprocessing.scale(returns_range, axis=1)
     dist = pdist(returns_range.T, 'correlation')
     output = linkage(dist, method='ward')
     n_clust = 2
     clusters = fcluster(output, n_clust, criterion='maxclust')
+
     return clusters
 
 
-def dataframe_clusters(df_ret: pd.DataFrame) -> pd.DataFrame:
+def dataframe_clusters() -> pd.DataFrame:
     """
     For the first date t=35, the function takes 35 lines of data to create the clusters. For the second the date t=36,
     the function takes 36 lines of datas and so on.
-    :param df_ret: the initial dataframe with the returns for all the tickers without the market
-    :return: an
+    :return: a dataframe with the clusters for each tickers at each date.
+        The index starts at 31/07/2008 and there is all the columns except the market.
     """
-    df_clust = pd.DataFrame(0, columns=df_ret.columns, index=df_ret.index[35:])
-    for i in range(35, len(df_ret)):
-        df_clust.iloc[i - 35, :] = clusterisation(df_ret.iloc[:i, :])
+
+    df_clust = pd.DataFrame(0, columns=df_returns.columns, index=df_returns.index[35:])
+    for i in range(35, len(df_returns)):
+        df_clust.iloc[i - 35, :] = clusterisation(df_returns.iloc[:i, :])
+
     return df_clust
 
 
-# print(dataframe_clusters(df_returns))
+df_clusters = dataframe_clusters()
 
 
 ################################################################# STEP 2 ###############################################
 
-def z_score(df_value: pd.DataFrame, df_clust: pd.DataFrame) -> pd.DataFrame:
+def z_score(df_value: pd.DataFrame) -> pd.DataFrame:
     """
     The function loops on each rows of the dataframe and create two different series according to the clusters. Then it
     applies the z-score on each series separately and recombine them.
-    :param df_value: dataframe containing the value on which to apply the z-score
-    :param df_clust: same dataframe above but with the clusters instead of the values
-    :return: same dataframe as above but with the within-cluster cross-sectional z-score applied
+    :param df_value: dataframe containing the value on which to apply the z-score.
+    :return: same dataframe as above but with the within-cluster cross-sectional z-score applied.
     """
+
     # print(df_value)
-    # print(df_clust)
     df_value = df_value.apply(pd.to_numeric, errors='coerce')
     df_output = pd.DataFrame(columns=df_value.columns)
     for r in range(df_value.shape[0]):
         df_output_inter = df_value.iloc[[r]]
-        df_inter = df_clust.iloc[[r]]
+        df_inter = df_clusters.iloc[[r]]
 
-        columns_1 = df_inter[df_inter == 1].dropna(axis=1).columns.values
-        columns_2 = df_inter[df_inter == 2].dropna(axis=1).columns.values
-
-        df_output_1 = df_output_inter.drop(columns_2, axis=1)
-        df_output_2 = df_output_inter.drop(columns_1, axis=1)
+        df_output_1, df_output_2 = sf.pivot_table(df_inter, df_output_inter, (1, 2))
 
         df_output_1 = stats.zscore(df_output_1, axis=None)
         df_output_2 = stats.zscore(df_output_2, axis=None)
@@ -79,163 +79,202 @@ def z_score(df_value: pd.DataFrame, df_clust: pd.DataFrame) -> pd.DataFrame:
     return df_output
 
 
-# print(z_score(df_returns, dataframe_clusters(df_returns)))
+#print(z_score(df_returns.iloc[35:, :]))
 
 
-def R_MOM(df_ret: pd.DataFrame) -> pd.DataFrame:
+def R_MOM() -> pd.DataFrame:
     """
-    - Do the r_mom(s,t)
-    - Apply the within-cluster cross sectional z-score
-    :param df_ret: the initial dataframe with the returns for all the tickers without the market
-    :return: a dataframe of the same size as the initial (index, columns) with computation done for the R_MOM(s,t)
+    - Do the 𝑟_𝑚𝑜𝑚𝑠,𝑡.
+    - Apply the within-cluster cross sectional z-score.
+    :return: a dataframe with computation done for the (𝑅_𝑀𝑂𝑀𝑠,𝑡).
+        The index starts at 31/07/2008 and there is all the columns except the market.
     """
-    # r_mom 12-month return momentum
-    df_output = df_ret.shift().rolling(11).apply(lambda x: x.mean())
+
+    # 𝑟_𝑚𝑜𝑚𝑠,𝑡 12-month return momentum
+    df_output = df_returns.shift().rolling(11).apply(lambda x: x.mean())
     df_output = df_output.iloc[35:, :]  # dataframe that starts at 31/07/2008
 
     #  within-cluster cross-sectional z-score
-    df_cluster = dataframe_clusters(df_ret)  # dataframe that starts at 31/07/2008
-    df_output = z_score(df_output, df_cluster)
+    df_output = z_score(df_output)
+
     return df_output
 
 
-# print(R_MOM(df_returns))
+# print(R_MOM())
 
 
-def s_mom(df_ret: pd.DataFrame) -> pd.DataFrame:
+def s_mom() -> pd.DataFrame:
     """
     For each columns c:
         - We perform a rolling regression on a 36 windows. We get as many alphas and betas as there are 36 windows in
         the column.
         - Then, we retrieve the errors. For each alpha and beta, we retrieve the last 12 errors (errors computed with
         those specific alpha and beta).
-    :param df_ret: the initial dataframe with the returns for all the tickers without the market
-    :return: a dataframe of the same size as the initial (index, columns) with computation done for the s_mom(s,t)
+    :return:  a dataframe with computation done for the 𝑠_𝑚𝑜𝑚𝑠,𝑡.
+        The index starts at 31/07/2008 and there is all the columns except the market.
     """
+
     alpha_beta_error = {}
     error = {}
-    df_output = pd.DataFrame(index=df_ret.index, columns=df_ret.columns)
-    for c in df.columns:
-        # Retrive the alpha and beta for a 36 windows for the whole list
-        alpha_beta_error[c] = pd.DataFrame(RollingOLS(df_ret[c].values, sm.add_constant(df_market.values),
+    df_output = pd.DataFrame(index=df_returns.index, columns=df_returns.columns)
+
+    for c in df_output.columns:
+        # Retrieve the alpha and beta for a 36 windows for the whole list
+        alpha_beta_error[c] = pd.DataFrame(RollingOLS(df_returns[c].values, sm.add_constant(df_market.values),
                                                       window=36).fit().params)
 
         # Compute the errors for each alpha and beta
         error[c] = {}
-        for model in range(len(alpha_beta_error[c].index)):
+        for model in range(len(alpha_beta_error[c].index)):  # Loop in all the different alpha/beta for each date.
             error[c][model] = {}
-            for i in range(12):
-                error[c][model][i] = df_ret[c][model - i] - (alpha_beta_error[c][0][model] +
-                                                             alpha_beta_error[c][1][model] * df_market[model - i])
+            for i in range(12):  # Loop in the last 11 + current errors for a couple alpha/beta
+                error[c][model][i] = df_returns[c][model - i] - (alpha_beta_error[c][0][model] +
+                                                                 alpha_beta_error[c][1][model] * df_market[model - i])
             df_output[c][model] = alpha_beta_error[c][0][model] + np.array(list(error[c][model].values())).mean()
+
     return df_output
 
 
-# print(s_mom(df_returns))
+# print(s_mom())
 
 
-def S_MOM(df_ret: pd.DataFrame) -> pd.DataFrame:
+def S_MOM() -> pd.DataFrame:
     """
-    - Do the s_mom(s,t)
-    - Apply the within-cluster cross sectional z-score
-    :param df_ret: the initial dataframe with the returns for all the tickers without the market
-    :return: a dataframe of the same size as the initial (index, columns) with computation done for the S_MOM(s,t)
+    - Do the 𝑠_𝑚𝑜𝑚𝑠,𝑡.
+    - Apply the within-cluster cross sectional z-score.
+    :return: a dataframe with computation done for the (𝑆_𝑀𝑂𝑀𝑠,𝑡).
+            The index starts at 31/07/2008 and there is all the columns except the market.
     """
-    # s_mom 12-month return momentum
-    df_output = s_mom(df_ret)
+
+    # 𝑠_𝑚𝑜𝑚𝑠,𝑡 12-month return momentum
+    df_output = s_mom()
     df_output = df_output.iloc[35:, :]  # dataframe that starts at 31/07/2008
-    df_output.drop('EUROSTOXX 50 TR index', axis=1, inplace=True)  # dataframe that starts at 31/07/2008
+
     #  within-cluster cross-sectional z-score
-    df_cluster = dataframe_clusters(df_ret)  # dataframe that starts at 31/07/2008
-    df_output = z_score(df_output, df_cluster)
+    df_output = z_score(df_output)
+
     return df_output
 
 
-# print(S_MOM(df_returns))
+# print(S_MOM())
 
 
 def MOM(SMOM: pd.DataFrame, RMOM: pd.DataFrame) -> pd.DataFrame:
+    """
+    𝑀𝑂𝑀𝑠,𝑡 = (𝑅_𝑀𝑂𝑀𝑠,𝑡 + 𝑆_𝑀𝑂𝑀𝑠,𝑡)/2
+    :param SMOM: dataframe with the 12-months specific momentum score (𝑆_𝑀𝑂𝑀𝑠,𝑡).
+    :param RMOM: dataframe with the 12-months return momentum score (𝑅_𝑀𝑂𝑀𝑠,𝑡).
+    :return: a dataframe with computation done for the (𝑀𝑂𝑀𝑠,𝑡).
+            The index starts at 31/07/2008 and there is all the columns except the market.
+    """
+
     MOM = (SMOM + RMOM) / 2
+
     return MOM
 
 
-df_R_MOM = R_MOM(df_returns)
-df_S_MOM = S_MOM(df_returns)
+df_R_MOM = R_MOM()
+df_S_MOM = S_MOM()
 df_MOM = MOM(df_R_MOM, df_S_MOM)
+
 
 ################################################################# STEP 3 ###############################################
 
-# def long_short(row_cluster_score, returns_cluster):
-#     median = row_cluster_score.median()
-#     weights = pd.Series(0, index=returns_cluster.columns)
-#
-#     col_long = row_cluster_score[row_cluster_score >= median].index
-#     col_short = row_cluster_score[row_cluster_score < median].index
-#
-#     cov_long = np.cov(returns_cluster.drop(col_short, axis=1), rowvar=False)
-#     cov_short = np.cov(returns_cluster.drop(col_long, axis=1), rowvar=False)
-#
-#     InvVolWeightAssets_long = 1 / np.sqrt(np.diagonal(cov_long))
-#     InvVolWeightAssets_short = 1 / np.sqrt(np.diagonal(cov_short))
-#
-#     SumInvVolWeightAssets_long = np.sum(1 / np.sqrt(np.diagonal(cov_long)))
-#     SumInvVolWeightAssets_short = np.sum(1 / np.sqrt(np.diagonal(cov_short)))
-#
-#     for i in range(len(col_long)):
-#         weights.loc[col_long[i]] = InvVolWeightAssets_long[i] / SumInvVolWeightAssets_long
-#
-#     for i in range(len(col_short)):
-#         weights.loc[col_short[i]] = -InvVolWeightAssets_short[i] / SumInvVolWeightAssets_short
-#
-#     return weights
-#
-# def dataframe_weights(returns,df_cluster, df_Mom):
-#     df_Weights=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
-#     for i in range(36,len(returns)):
-#         col_1, col_2 = fonction_moise(df_cluster.iloc[i-36,:])
-#
-#         weights_1 = long_short(df_Mom.iloc[i-36, col_1], returns.iloc[:i,col_1])
-#         weights_2 = long_short(df_Mom.iloc[i-36, col_2], returns.iloc[:i,col_2])
-#
-#         weights=recombinator(weights_1,weights_2,col_1,col_2)
-#
-#         df_Weights.iloc[i - 36, :]=weights
-#     return df_Weights
-#
-# df_weights=dataframe_weights(returns,df_cluster,df_Mom)
-# print(df_weights)
-#
+def long_short_weights() -> pd.DataFrame:
+    """
+    For each row r:
+        - Retrieve the clusters on the dataframe containing the MOM scores. We get the two clusters with the score of
+            each stock in it.
+        - Within each cluster, we split the stock and their MOM score according to the median of the cluster
+            into 2 sub category Long/Short.
+        - Switch to the expanding volatility dataframe, we apply the inverse volatility weighting scheme within
+            each sub-category.
+            --> Cluster 1 / Long : total weight = 1
+            --> Cluster 1 / Short : total weight = -1
+            --> Cluster 1 : total weight = 0
+            --> Cluster 2 / Long : total weight = 1
+            --> Cluster 2 / Short : total weight = -1
+            --> Cluster 2 : total weight = 0
+            --> Portfolio : total weight = 0
+    :return: a dataframe from 31/07/2008 with the weight of each stock at each date.
+    """
+
+    df_w = pd.DataFrame(columns=df_returns.columns, index=df_returns.index[35:])
+    df_vol = df_returns.expanding().std().iloc[35:, :]
+
+    for r in range(df_w.shape[0]):
+        df_MOM_inter = df_MOM.iloc[[r]]
+        df_clust_inter = df_clusters.iloc[[r]]
+        df_vol_inter = df_vol.iloc[[r]]
+
+        df_MOM_1, df_MOM_2 = sf.pivot_table(df_clust_inter, df_MOM_inter, (1, 2))
+
+        ####################### CREATING THE LONG/SHORT PER CLUSTER #######################
+        df_vol_1_long, df_vol_1_short = sf.pivot_table(df_MOM_1, df_vol_inter, (np.median(df_MOM_1.values),),
+                                                       equal=0)
+        df_vol_2_long, df_vol_2_short = sf.pivot_table(df_MOM_2, df_vol_inter, (np.median(df_MOM_2.values),),
+                                                       equal=0)
+        ###################################################################################
+
+        ############# COMPUTE THE INV VOL WEIGHT PER LONG/SHORT PER CLUSTER ###############
+        def inv_vol_weight(x): return (1 / x) / np.sum((1 / x))
+
+        df_inv_vol_weight_1_long = df_vol_1_long.apply(inv_vol_weight).transpose()
+        df_inv_vol_weight_1_short = df_vol_1_short.apply(inv_vol_weight).transpose() * -1
+        df_inv_vol_weight_2_long = df_vol_2_long.apply(inv_vol_weight).transpose()
+        df_inv_vol_weight_2_short = df_vol_2_short.apply(inv_vol_weight).transpose() * -1
+        ###################################################################################
+
+        df_weights_inter = pd.concat([df_inv_vol_weight_1_long, df_inv_vol_weight_1_short,
+                                      df_inv_vol_weight_2_long, df_inv_vol_weight_2_short], axis=1)
+
+        df_w = pd.concat([df_w, df_weights_inter], axis=0)
+        df_w.dropna(axis=0, inplace=True)  # Index mismatch because of transpose
+
+    return df_w
+
+
+df_weights = long_short_weights()
+
 # # check si les poids somment bien à 1 au niveau global
-# # for i in range(len(df_weights)):
-# #     print(df_weights.iloc[i,:].sum())
-#
-# #étape 4
-#
-# def global_port(row_cluster, row_weights):
-#     col_1,col_2 = fonction_moise(row_cluster)
-#
-#     N1=len(col_1)
-#     N2=len(col_2)
-#
-#     w_global = row_weights.copy()
-#     w_global.iloc[col_1] = row_weights.iloc[col_1].values*N1/(N1+N2)
-#     w_global.iloc[col_2] = row_weights.iloc[col_2].values*N2/(N1+N2)
-#
-#     return w_global
-#
-# def dataframe_global_weights(df_cluster, df_weights):
-#     df_global_weights=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
-#     for i in range(36,len(returns)):
-#         df_global_weights.iloc[i - 36, :]=global_port(df_cluster.iloc[i-36,:],df_weights.iloc[i-36,:])
-#
-#     return df_global_weights
-#
-# df_glob_weights=dataframe_global_weights(df_cluster,df_weights)
-# print(df_glob_weights)
-#
-# # check si les poids somment bien à 1 au niveau global
-# # for i in range(len(df_glob_weights)):
-# #     print(df_glob_weights.iloc[i,:].sum())
-#
-# #step 5
-#
+# for i in range(len(df_w)):
+#      print(df_w.iloc[i,:].sum())
+
+################################################################# STEP 4 ###############################################
+def global_weights() -> pd.DataFrame:
+    """
+
+    :return:
+    """
+
+    df_gw = pd.DataFrame(columns=df_returns.columns, index=df_returns.index[35:])
+
+    for r in range(df_gw.shape[0]):
+
+        df_clust_inter = df_clusters.iloc[[r]]
+        df_w_inter = df_weights.iloc[[r]]
+
+        df_w_1, df_w_2 = sf.pivot_table(df_clust_inter, df_w_inter, (1, 2))
+
+        ############# COMPUTE THE INV VOL WEIGHT PER LONG/SHORT PER CLUSTER ###############
+        def gw(x): return x * x.shape/46
+
+        df_gw_1 = df_w_1.apply(gw)
+        df_gw_2 = df_w_2.apply(gw)
+        ###################################################################################
+
+        df_gw_inter = pd.concat([df_gw_1, df_gw_2], axis=1)
+        df_gw = pd.concat([df_gw, df_gw_inter], axis=0)
+        df_gw.dropna(axis=0, inplace=True)  # Index mismatch because of transpose
+
+    return df_gw
+
+
+df_global_weights = global_weights()
+print(df_global_weights)
+
+# check si les poids somment bien à 1 au niveau global
+for i in range(len(df_global_weights)):
+     print(df_global_weights.iloc[i, :].sum())
+
+
