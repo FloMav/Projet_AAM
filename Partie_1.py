@@ -193,3 +193,21 @@ print(df_glob_weights)
 
 #step 5
 
+##### a check pour bien matcher les clusters et les returns
+
+def out_of_sample_perf(df_returns, df_global_weights):
+    perf=pd.DataFrame(0,index=df_global_weights.index,columns=['performance'])
+    weighted_perf_a=[]
+    for i in range(36,len(df_returns)):
+        weighted_perf=df_returns.iloc[i,:]*df_global_weights.iloc[i-36,:]
+        weighted_perf_a.append(weighted_perf.sum())
+    perf['performance']=weighted_perf_a
+    return perf
+
+df_perf=out_of_sample_perf(returns,df_glob_weights)
+print(df_perf)
+
+df_perf['portfolio']=df_perf['performance'].add(1).fillna(1).cumprod()*100
+
+plt.plot(df_perf['portfolio'])
+plt.show()
