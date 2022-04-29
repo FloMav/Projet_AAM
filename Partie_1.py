@@ -243,8 +243,11 @@ df_weights = long_short_weights()
 ################################################################# STEP 4 ###############################################
 def global_weights() -> pd.DataFrame:
     """
-
-    :return:
+    For each row r:
+        - Retrieve the 2 dataframes of normal weights for the clusters
+        - Apply the weighting scheme within each clusters.
+            ???????
+    :return: a dataframe from 31/07/2008 with the global weight of each stock at each date.
     """
 
     df_gw = pd.DataFrame(columns=df_returns.columns, index=df_returns.index[35:])
@@ -259,8 +262,8 @@ def global_weights() -> pd.DataFrame:
         ############# COMPUTE THE INV VOL WEIGHT PER LONG/SHORT PER CLUSTER ###############
         def gw(x): return x * x.shape/46
 
-        df_gw_1 = df_w_1.apply(gw)
-        df_gw_2 = df_w_2.apply(gw)
+        df_gw_1 = df_w_1.transpose().apply(gw).transpose()
+        df_gw_2 = df_w_2.transpose().apply(gw).transpose()
         ###################################################################################
 
         df_gw_inter = pd.concat([df_gw_1, df_gw_2], axis=1)
@@ -271,14 +274,24 @@ def global_weights() -> pd.DataFrame:
 
 
 df_global_weights = global_weights()
-df_global_weights.to_csv('Data/gw.csv')
+#df_global_weights.to_csv('Data/gw.csv')
 print(df_global_weights)
 
 # # check si les poids somment bien à 1 au niveau global
 # for i in range(len(df_global_weights)):
 #      print(df_global_weights.iloc[i, :].sum())
 
+def track():
+    df_track = df_global_weights * df_returns
+    df_track = df_track.sum(1) * 1000000
+    print(df_track)
+    pass
 
+
+track()
+
+
+################################################################# STEP 4 ###############################################
 
 
 
