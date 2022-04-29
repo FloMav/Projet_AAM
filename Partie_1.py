@@ -271,10 +271,14 @@ def global_weights() -> pd.DataFrame:
 
 
 df_global_weights = global_weights()
+df_global_weights.to_csv('Data/gw.csv')
 print(df_global_weights)
 
-# check si les poids somment bien à 1 au niveau global
-for i in range(len(df_global_weights)):
-     print(df_global_weights.iloc[i, :].sum())
+# # check si les poids somment bien à 1 au niveau global
+# for i in range(len(df_global_weights)):
+#      print(df_global_weights.iloc[i, :].sum())
+
+
+
 
 
