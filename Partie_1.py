@@ -117,20 +117,30 @@ def dataframe_Mom(df_Smom,df_Rmom):
 df_Mom=dataframe_Mom(df_Smom,df_Rmom)
 print(df_Mom)
 
-#ébauche étape 3 mais à adapter aux inputs
+# étape 3
 
 def long_short(row_cluster_score, returns_cluster):
     median = row_cluster_score.median()
-    weights = []
-    covReturns = np.cov(returns_cluster, rowvar=False)
-    InvVolWeightAssets_Risk = 1 / np.sqrt(np.diagonal(covReturns))
-    SumInvVolWeightAssets_Risk = np.sum(1 / np.sqrt(np.diagonal(covReturns)))
+    weights = pd.Series(0, index=returns_cluster.columns)
 
-    for i in range(len(row_cluster_score)):
-        if row_cluster_score[i] >= median:
-            weights.append(InvVolWeightAssets_Risk[i] / SumInvVolWeightAssets_Risk)
-        else:
-            weights.append(-InvVolWeightAssets_Risk[i] / SumInvVolWeightAssets_Risk)
+    col_long = row_cluster_score[row_cluster_score >= median].index
+    col_short = row_cluster_score[row_cluster_score < median].index
+
+    cov_long = np.cov(returns_cluster.drop(col_short, axis=1), rowvar=False)
+    cov_short = np.cov(returns_cluster.drop(col_long, axis=1), rowvar=False)
+
+    InvVolWeightAssets_long = 1 / np.sqrt(np.diagonal(cov_long))
+    InvVolWeightAssets_short = 1 / np.sqrt(np.diagonal(cov_short))
+
+    SumInvVolWeightAssets_long = np.sum(1 / np.sqrt(np.diagonal(cov_long)))
+    SumInvVolWeightAssets_short = np.sum(1 / np.sqrt(np.diagonal(cov_short)))
+
+    for i in range(len(col_long)):
+        weights.loc[col_long[i]] = InvVolWeightAssets_long[i] / SumInvVolWeightAssets_long
+
+    for i in range(len(col_short)):
+        weights.loc[col_short[i]] = -InvVolWeightAssets_short[i] / SumInvVolWeightAssets_short
+
     return weights
 
 def dataframe_weights(returns,df_cluster, df_Mom):
@@ -138,8 +148,8 @@ def dataframe_weights(returns,df_cluster, df_Mom):
     for i in range(36,len(returns)):
         col_1, col_2 = fonction_moise(df_cluster.iloc[i-36,:])
 
-        weights_1=long_short(df_Mom.iloc[i-36,col_1],returns.iloc[:i,col_1])
-        weights_2 = long_short(df_Mom.iloc[i - 36, col_2], returns.iloc[:i, col_2])
+        weights_1 = long_short(df_Mom.iloc[i-36, col_1], returns.iloc[:i,col_1])
+        weights_2 = long_short(df_Mom.iloc[i-36, col_2], returns.iloc[:i,col_2])
 
         weights=recombinator(weights_1,weights_2,col_1,col_2)
 
@@ -148,3 +158,22 @@ def dataframe_weights(returns,df_cluster, df_Mom):
 
 df_weights=dataframe_weights(returns,df_cluster,df_Mom)
 print(df_weights)
+
+# check si les poids somment bien à 1 au niveau global
+# for i in range(len(df_weights)):
+#     print(df_weights.iloc[i,:].sum())
+
+#étape 4
+
+def global_port(row_cluster, row_weights):
+    col_1,col_2 = fonction_moise(row_cluster)
+
+    N1=len(col_1)
+    N2=len(col_2)
+
+    row_weights.iloc[col_1] = row_weights.iloc[col_1]*N1/(N1+N2)
+    row_weights.iloc[col_2] = row_weights.iloc[col_2]*N2/(N1+N2)
+
+    return row_weights
+
+print(global_port(df_cluster.iloc[0,:],df_weights.iloc[0,:]))
