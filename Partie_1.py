@@ -15,6 +15,8 @@ df_market = df.iloc[:, -1]
 df_returns = df.drop(df.columns[-1], axis=1)
 
 
+################################################################# STEP 1 ###############################################
+
 def clusterisation(returns_range: pd.DataFrame) -> np.ndarray:
     """
     :param returns_range: a data range used to create the clusters at date t
@@ -41,6 +43,11 @@ def dataframe_clusters(df_ret: pd.DataFrame) -> pd.DataFrame:
     return df_clust
 
 
+# print(dataframe_clusters(df_returns))
+
+
+################################################################# STEP 2 ###############################################
+
 def z_score(df_value: pd.DataFrame, df_clust: pd.DataFrame) -> pd.DataFrame:
     """
     The function loops on each rows of the dataframe and create two different series according to the clusters. Then it
@@ -49,8 +56,8 @@ def z_score(df_value: pd.DataFrame, df_clust: pd.DataFrame) -> pd.DataFrame:
     :param df_clust: same dataframe above but with the clusters instead of the values
     :return: same dataframe as above but with the within-cluster cross-sectional z-score applied
     """
-    #print(df_value)
-    #print(df_clust)
+    # print(df_value)
+    # print(df_clust)
     df_value = df_value.apply(pd.to_numeric, errors='coerce')
     df_output = pd.DataFrame(columns=df_value.columns)
     for r in range(df_value.shape[0]):
@@ -72,7 +79,7 @@ def z_score(df_value: pd.DataFrame, df_clust: pd.DataFrame) -> pd.DataFrame:
     return df_output
 
 
-print()
+# print(z_score(df_returns, dataframe_clusters(df_returns)))
 
 
 def R_MOM(df_ret: pd.DataFrame) -> pd.DataFrame:
@@ -92,6 +99,9 @@ def R_MOM(df_ret: pd.DataFrame) -> pd.DataFrame:
     return df_output
 
 
+# print(R_MOM(df_returns))
+
+
 def s_mom(df_ret: pd.DataFrame) -> pd.DataFrame:
     """
     For each columns c:
@@ -104,19 +114,24 @@ def s_mom(df_ret: pd.DataFrame) -> pd.DataFrame:
     """
     alpha_beta_error = {}
     error = {}
-    df_output = pd.DataFrame(index = df.index, columns=df.columns)
+    df_output = pd.DataFrame(index=df_ret.index, columns=df_ret.columns)
     for c in df.columns:
-        #Retrive the alpha and beta for a 36 windows for the whole list
-        alpha_beta_error[c] = pd.DataFrame(RollingOLS(df[c].values, sm.add_constant(df_market.values), window=36).fit().params)
+        # Retrive the alpha and beta for a 36 windows for the whole list
+        alpha_beta_error[c] = pd.DataFrame(RollingOLS(df_ret[c].values, sm.add_constant(df_market.values),
+                                                      window=36).fit().params)
 
-        #Compute the errors for each alpha and beta
+        # Compute the errors for each alpha and beta
         error[c] = {}
         for model in range(len(alpha_beta_error[c].index)):
             error[c][model] = {}
             for i in range(12):
-                error[c][model][i] = df[c][model-i] - (alpha_beta_error[c][0][model] + alpha_beta_error[c][1][model] * df_market[model-i])
+                error[c][model][i] = df_ret[c][model - i] - (alpha_beta_error[c][0][model] +
+                                                             alpha_beta_error[c][1][model] * df_market[model - i])
             df_output[c][model] = alpha_beta_error[c][0][model] + np.array(list(error[c][model].values())).mean()
     return df_output
+
+
+# print(s_mom(df_returns))
 
 
 def S_MOM(df_ret: pd.DataFrame) -> pd.DataFrame:
@@ -136,92 +151,91 @@ def S_MOM(df_ret: pd.DataFrame) -> pd.DataFrame:
     return df_output
 
 
-#print(S_MOM(df_returns))
+# print(S_MOM(df_returns))
 
 
+def MOM(SMOM: pd.DataFrame, RMOM: pd.DataFrame) -> pd.DataFrame:
+    MOM = (SMOM + RMOM) / 2
+    return MOM
 
 
+df_R_MOM = R_MOM(df_returns)
+df_S_MOM = S_MOM(df_returns)
+df_MOM = MOM(df_R_MOM, df_S_MOM)
 
+################################################################# STEP 3 ###############################################
 
-
-
-
-
-
-
-# étape 3
-
-def long_short(row_cluster_score, returns_cluster):
-    median = row_cluster_score.median()
-    weights = pd.Series(0, index=returns_cluster.columns)
-
-    col_long = row_cluster_score[row_cluster_score >= median].index
-    col_short = row_cluster_score[row_cluster_score < median].index
-
-    cov_long = np.cov(returns_cluster.drop(col_short, axis=1), rowvar=False)
-    cov_short = np.cov(returns_cluster.drop(col_long, axis=1), rowvar=False)
-
-    InvVolWeightAssets_long = 1 / np.sqrt(np.diagonal(cov_long))
-    InvVolWeightAssets_short = 1 / np.sqrt(np.diagonal(cov_short))
-
-    SumInvVolWeightAssets_long = np.sum(1 / np.sqrt(np.diagonal(cov_long)))
-    SumInvVolWeightAssets_short = np.sum(1 / np.sqrt(np.diagonal(cov_short)))
-
-    for i in range(len(col_long)):
-        weights.loc[col_long[i]] = InvVolWeightAssets_long[i] / SumInvVolWeightAssets_long
-
-    for i in range(len(col_short)):
-        weights.loc[col_short[i]] = -InvVolWeightAssets_short[i] / SumInvVolWeightAssets_short
-
-    return weights
-
-def dataframe_weights(returns,df_cluster, df_Mom):
-    df_Weights=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
-    for i in range(36,len(returns)):
-        col_1, col_2 = fonction_moise(df_cluster.iloc[i-36,:])
-
-        weights_1 = long_short(df_Mom.iloc[i-36, col_1], returns.iloc[:i,col_1])
-        weights_2 = long_short(df_Mom.iloc[i-36, col_2], returns.iloc[:i,col_2])
-
-        weights=recombinator(weights_1,weights_2,col_1,col_2)
-
-        df_Weights.iloc[i - 36, :]=weights
-    return df_Weights
-
-df_weights=dataframe_weights(returns,df_cluster,df_Mom)
-print(df_weights)
-
-# check si les poids somment bien à 1 au niveau global
-# for i in range(len(df_weights)):
-#     print(df_weights.iloc[i,:].sum())
-
-#étape 4
-
-def global_port(row_cluster, row_weights):
-    col_1,col_2 = fonction_moise(row_cluster)
-
-    N1=len(col_1)
-    N2=len(col_2)
-
-    w_global = row_weights.copy()
-    w_global.iloc[col_1] = row_weights.iloc[col_1].values*N1/(N1+N2)
-    w_global.iloc[col_2] = row_weights.iloc[col_2].values*N2/(N1+N2)
-
-    return w_global
-
-def dataframe_global_weights(df_cluster, df_weights):
-    df_global_weights=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
-    for i in range(36,len(returns)):
-        df_global_weights.iloc[i - 36, :]=global_port(df_cluster.iloc[i-36,:],df_weights.iloc[i-36,:])
-
-    return df_global_weights
-
-df_glob_weights=dataframe_global_weights(df_cluster,df_weights)
-print(df_glob_weights)
-
-# check si les poids somment bien à 1 au niveau global
-# for i in range(len(df_glob_weights)):
-#     print(df_glob_weights.iloc[i,:].sum())
-
-#step 5
-
+# def long_short(row_cluster_score, returns_cluster):
+#     median = row_cluster_score.median()
+#     weights = pd.Series(0, index=returns_cluster.columns)
+#
+#     col_long = row_cluster_score[row_cluster_score >= median].index
+#     col_short = row_cluster_score[row_cluster_score < median].index
+#
+#     cov_long = np.cov(returns_cluster.drop(col_short, axis=1), rowvar=False)
+#     cov_short = np.cov(returns_cluster.drop(col_long, axis=1), rowvar=False)
+#
+#     InvVolWeightAssets_long = 1 / np.sqrt(np.diagonal(cov_long))
+#     InvVolWeightAssets_short = 1 / np.sqrt(np.diagonal(cov_short))
+#
+#     SumInvVolWeightAssets_long = np.sum(1 / np.sqrt(np.diagonal(cov_long)))
+#     SumInvVolWeightAssets_short = np.sum(1 / np.sqrt(np.diagonal(cov_short)))
+#
+#     for i in range(len(col_long)):
+#         weights.loc[col_long[i]] = InvVolWeightAssets_long[i] / SumInvVolWeightAssets_long
+#
+#     for i in range(len(col_short)):
+#         weights.loc[col_short[i]] = -InvVolWeightAssets_short[i] / SumInvVolWeightAssets_short
+#
+#     return weights
+#
+# def dataframe_weights(returns,df_cluster, df_Mom):
+#     df_Weights=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
+#     for i in range(36,len(returns)):
+#         col_1, col_2 = fonction_moise(df_cluster.iloc[i-36,:])
+#
+#         weights_1 = long_short(df_Mom.iloc[i-36, col_1], returns.iloc[:i,col_1])
+#         weights_2 = long_short(df_Mom.iloc[i-36, col_2], returns.iloc[:i,col_2])
+#
+#         weights=recombinator(weights_1,weights_2,col_1,col_2)
+#
+#         df_Weights.iloc[i - 36, :]=weights
+#     return df_Weights
+#
+# df_weights=dataframe_weights(returns,df_cluster,df_Mom)
+# print(df_weights)
+#
+# # check si les poids somment bien à 1 au niveau global
+# # for i in range(len(df_weights)):
+# #     print(df_weights.iloc[i,:].sum())
+#
+# #étape 4
+#
+# def global_port(row_cluster, row_weights):
+#     col_1,col_2 = fonction_moise(row_cluster)
+#
+#     N1=len(col_1)
+#     N2=len(col_2)
+#
+#     w_global = row_weights.copy()
+#     w_global.iloc[col_1] = row_weights.iloc[col_1].values*N1/(N1+N2)
+#     w_global.iloc[col_2] = row_weights.iloc[col_2].values*N2/(N1+N2)
+#
+#     return w_global
+#
+# def dataframe_global_weights(df_cluster, df_weights):
+#     df_global_weights=pd.DataFrame(0,columns=returns.columns, index=returns.index[36:])
+#     for i in range(36,len(returns)):
+#         df_global_weights.iloc[i - 36, :]=global_port(df_cluster.iloc[i-36,:],df_weights.iloc[i-36,:])
+#
+#     return df_global_weights
+#
+# df_glob_weights=dataframe_global_weights(df_cluster,df_weights)
+# print(df_glob_weights)
+#
+# # check si les poids somment bien à 1 au niveau global
+# # for i in range(len(df_glob_weights)):
+# #     print(df_glob_weights.iloc[i,:].sum())
+#
+# #step 5
+#
