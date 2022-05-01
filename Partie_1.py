@@ -287,6 +287,8 @@ df_global_weights = global_weights()
 # for i in range(len(df_global_weights)):
 #      print(df_global_weights.iloc[i, :].sum())
 
+################################################################# STEP 5 ###############################################
+
 def track():
     df_ret = df_returns.iloc[36:, :]
     df_g_w = df_global_weights.shift().dropna(axis=0)
@@ -305,7 +307,7 @@ def track():
 track()
 
 
-################################################################# STEP 5 ###############################################
+
 
 
 
