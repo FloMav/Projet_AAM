@@ -8,6 +8,7 @@ import scipy.stats as stats
 from statsmodels.regression.rolling import RollingOLS
 from matplotlib import pyplot as plt
 import Sup_funcs as sf
+import Partie_2 as p2
 
 # Import dataframe
 df = pd.read_csv("Data/DATA_PROJECT.csv", index_col=0)
@@ -294,20 +295,22 @@ def track():
     df_g_w = df_global_weights.shift().dropna(axis=0)
     df_track = df_g_w * df_ret
     df_track = df_track.sum(1).add(1).fillna(1).cumprod() * 100
-    print(df_ret)
-    print(df_g_w)
-    print(df_track)
     market_port = df_market[36:].add(1).fillna(1).cumprod() * 100
     plt.plot(df_market.index[36:], df_track, color='red', label='strategy')
     plt.plot(df_market.index[36:], market_port, color='blue', label='market')
     plt.legend()
-    plt.show()
+    #plt.show()
+    print(df_track)
     pass
 
+
 track()
+df_ret = df_returns.iloc[36:, :]
+df_g_w = df_global_weights.shift().dropna(axis=0)
+tr = df_g_w * df_ret
 
-
-
-
-
+print(p2.average_return(tr))
+print(p2.volatility(tr))
+print(p2.CVaR(tr))
+print(p2.MDD(tr))
 

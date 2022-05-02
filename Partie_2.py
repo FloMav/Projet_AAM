@@ -2,78 +2,116 @@ import numpy as np
 import pandas as pd
 
 
-def average_return(track: pd.DataFrame) -> float:
+def average_return(returns: pd.DataFrame) -> float:
     """
-    :param track: dataframe with the index TRACK in the FIRST column.
-    :return: the average return per period over the whole track.
+    :param returns: dataframe with the returns in the FIRST column.
+    :return: the annualized average of the return.
     """
-    track = track.iloc[:, 0].values.tolist()  # Convert df to list
-    ave_ret = np.exp(np.log(track[-1]) / (len(track)-1)) - 1
-    return ave_ret
+    returns = returns.values.tolist()  # Convert df to list
+    average = float(np.mean(returns))*12
+    return average
 
 
-def volatility(track: pd.DataFrame, nb_day: int = 252) -> float:
+def volatility(returns: pd.DataFrame) -> float:
     """
-    :param track: dataframe with the index TRACK in the FIRST column.
-    :param nb_day: period of volatility computation.
-    :return: the volatility of the return from the (end-nb_day) to the end of the track.
+    :param returns: dataframe with the returns in the FIRST column.
+    :return: the annualized volatility of the return.
     """
-    track = track.pct_change().dropna(axis=0)  # Convert track to returns
-    track = track.iloc[-nb_day:, 0].values.tolist()  # Convert df to list taking into account nb_day
-    vol = float(np.std(track))
+    returns = returns.values.tolist()  # Convert df to list
+    vol = (float(np.std(returns)))*np.sqrt(12)
     return vol
 
 
-def VaR(track, alpha: float = 0.95, month: int = 21) -> float:
+def VaR(returns, alpha: float = 0.95) -> float:
     """
 
-    :param track: dataframe with the index TRACK in the FIRST column.
+    :param returns: dataframe with the returns in the FIRST column.
     :param alpha: confidence level of the VaR
-    :param month: VaR over 1 month equivalent to 21 days (252/12)
     :return: the VaR at alpha % over month
     """
-    track = track.pct_change().dropna(axis=0)  # Convert track to returns
-    track = track.iloc[-month:, 0]  # Convert dataframe to series
-    var = track.quantile(q=1-alpha, interpolation='lower')
+    returns = returns.iloc[:, 0]  # Convert dataframe to series
+    var = returns.quantile(q=1-alpha)
     return var
 
 
-def CVaR(track, alpha: float = 0.95, month: int = 21) -> float:
+def CVaR(returns, alpha: float = 0.95) -> float:
     """
 
-    :param track: dataframe with the index TRACK in the FIRST column.
+    :param returns: dataframe with the returns in the FIRST column.
     :param alpha: confidence level of the CVaR
-    :param month: CVaR over 1 month equivalent to 21 days (252/12)
     :return: the CVaR at alpha % over month
     """
-    var = VaR(track, alpha=alpha, month=month)
-    track = track.pct_change().dropna(axis=0)  # Convert track to returns
-    track = track.iloc[:, 0]  # Convert dataframe to series
-    track = track[track <= var]
-    cvar = track.mean()
+    var = VaR(returns, alpha=alpha)
+    returns = returns.iloc[:, 0]  # Convert dataframe to series
+    returns = returns[returns <= var]
+    cvar = returns.mean()
     return cvar
 
 
-def MDD(track: pd.DataFrame, window=None) -> float:
+def MDD(returns: pd.DataFrame, window=None) -> float:
     """
-    :param track: dataframe with the index TRACK in the FIRST column.
+    :param returns: dataframe with the returns in the FIRST column.
     :param window: lookback window, int or None
      if None, look back entire history
     """
+    track = returns.add(1).fillna(1).cumprod() * 100
     track = track.iloc[:, 0]  # Convert dataframe to series
     n = len(track)
     if window is None:
         window = n
     # rolling peak values
     peak_series = track.rolling(window=window, min_periods=1).max()
-    print(peak_series)
-    return (track / peak_series - 1.0).min()
+    #return (track / peak_series - 1.0).min()
+    return track.iloc[-1]
 
 
-# df = pd.DataFrame([1, 1.2, 1.5, 1.4, 1.39, 1.35, 1.3, 1.23, 1.22, 1.11, 1.08, 1.34, 1.05, 0.9, 1.6], columns=['track'])
-# print(df)
-# print(MDD(df))
+# LONG/SHORT 50/50
+
+def luck(df):
+    n_sim = 1000
+    ret_sim = np.zeros((len(df), n_sim))
+    stats_sim = np.zeros((4, n_sim))
+
+    for i in range(n_sim):
+        score_t = np.random.normal(0, 1, df.shape)
+        for t in range(len(df)):
+            long = score_t[t, :] >= np.quantile(score_t[t, :], 0.5)
+            short = score_t[t, :] < np.quantile(score_t[t, :], 0.5)
+            ret_sim[t, i] = np.mean(df[t, long]) - np.mean(df[t, short])
+
+    luck_returns = pd.DataFrame(ret_sim)
+
+    for i in range(n_sim):
+        luck_returns_2 = pd.DataFrame(luck_returns.iloc[:, i])
+
+        # annualized average returns
+        stats_sim[0, i] = average_return(luck_returns_2)
+
+        # annualized volatility
+        stats_sim[1, i] = volatility(luck_returns_2)
+
+        # CVaR
+        stats_sim[2, i] = CVaR(luck_returns_2)
+
+        # MDD
+        stats_sim[3, i] = MDD(luck_returns_2)
+
+    ### STATISTICS LUCKY THRESHOLDS
+    thresholds = np.quantile(stats_sim, 0.99, axis=1)
+
+    return thresholds
+
+# Import dataframe
+df = pd.read_csv("Data/DATA_PROJECT.csv", index_col=0)
+df_returns = np.array(df.drop(df.columns[-1], axis=1))
+print(luck(df_returns))
 
 
+# Sharpe???
 
 
+# alpha vs. SX5E
+# for i in range(n_sim):
+# model = sm.OLS(ret_sim[:,i],sm.add_constant(market))
+# results = model.fit()
+# stats_sim[5,i]=results.params[0]*12
