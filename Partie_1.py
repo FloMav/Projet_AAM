@@ -42,7 +42,7 @@ def dataframe_clusters(graph: bool = 0) -> pd.DataFrame:
         clusters = fcluster(output, n_clust, criterion='maxclust')
         df_clust.iloc[i - 35, :] = clusters
 
-        if graph:  # Clusters at each t
+        if False:  # Clusters at each t
 
             plt.figure(figsize=(10, 10))
             plt.xlabel('Distance')
@@ -64,7 +64,7 @@ def dataframe_clusters(graph: bool = 0) -> pd.DataFrame:
         plt.figure(figsize=(15, 10), dpi=80)
         plt.plot(label, df_graph.iloc[:, 0], color='red', marker='o', label='Cluster 1')
         plt.plot(label, df_graph.iloc[:, 1], color='blue', marker='o', label='Cluster 2')
-        plt.plot(label, df_graph.iloc[:, 2], color='green', marker='o', label='Total')
+        plt.plot(label, df_graph.iloc[:, 2], color='green', label='Total')
         plt.legend()
         plt.ylabel('Number of stocks per companies')
         plt.title('Historical evolution of the number of stocks in the 2 clusters')
