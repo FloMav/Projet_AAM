@@ -35,7 +35,7 @@ def dataframe_clusters(graph: bool = 0) -> pd.DataFrame:
 
     for i in range(35, len(df_returns)):
 
-        returns_range = preprocessing.scale(df_returns.iloc[:i, :], axis=1)
+        returns_range = preprocessing.scale(df_returns.iloc[:i, :], axis=0)
         dist = pdist(returns_range.T, 'correlation')
         output = linkage(dist, method='ward')
         n_clust = 2
@@ -46,9 +46,12 @@ def dataframe_clusters(graph: bool = 0) -> pd.DataFrame:
 
             plt.figure(figsize=(10, 10))
             plt.xlabel('Distance')
-            plt.xticks()
-            plt.yticks()
-            dendrogram(output, color_threshold=1.5, truncate_mode='level', orientation='right', leaf_font_size=10,
+            csfont2 = {'fontname': 'Calibri', 'fontsize': '8'}
+            csfont3 = {'fontname': 'Calibri', 'fontsize': '6'}
+            plt.xlabel('Distance', **csfont2)
+            plt.xticks(**csfont3)
+            plt.yticks(**csfont3)
+            dendrogram(output, color_threshold=1, truncate_mode='level', orientation='right', leaf_font_size=10,
                        labels=df_returns.columns)
             plt.savefig(f'Graphs/Cluster_t/Cluster_{i}.png', bbox_inches='tight', dpi=300)
 
@@ -57,7 +60,6 @@ def dataframe_clusters(graph: bool = 0) -> pd.DataFrame:
         label = pd.to_datetime(df_clust.index)
         df_graph = df_clust.apply(pd.Series.value_counts, axis=1).fillna(0)
         df_graph['Total'] = df_graph.iloc[:, 0] + df_graph.iloc[:, 1]
-        print(df_graph)
         file_path = 'Graphs/Clusters.png'
         plt.figure(figsize=(15, 10), dpi=80)
         plt.plot(label, df_graph.iloc[:, 0], color='red', marker='o', label='Cluster 1')
@@ -71,8 +73,8 @@ def dataframe_clusters(graph: bool = 0) -> pd.DataFrame:
     return df_clust
 
 
-df_clusters = dataframe_clusters(graph=False)
-
+df_clusters = dataframe_clusters(graph=True)
+df_clusters.to_csv("Data/Clusters.csv")
 
 ################################################################# STEP 2 ###############################################
 
@@ -317,24 +319,34 @@ df_global_weights = global_weights()
 
 
 def track():
+
     df_ret = df_returns.iloc[36:, :]
     df_g_w = df_global_weights.shift().dropna(axis=0)
-    df_track = df_g_w * df_ret
+    df_ret_strat = df_g_w * df_ret
+    df_track_strat = df_ret_strat.sum(1).add(1).fillna(1).cumprod() * 100
+    print(f"\n\n ======= STRATEGY ======= \n")
+    print(f"======= Average return of the strategy: {p2.average_return(df_ret_strat)} ======= ")
+    print(f"======= Volatility of the strategy: {p2.volatility(df_ret_strat)} ======= ")
+    print(f"======= VaR of the strategy: {p2.VaR(df_ret_strat)} ======= ")
+    print(f"======= CVaR of the strategy: {p2.CVaR(df_ret_strat)} ======= ")
+    print(f"======= MDD of the strategy: {p2.MDD(df_ret_strat)} ======= ")
 
-    print(f"\n ======= Average return of the strategy: {p2.average_return(df_track)} ======= ")
-    print(f"\n ======= Volatility of the strategy: {p2.volatility(df_track)} ======= ")
-    print(f"\n ======= VaR of the strategy: {p2.CVaR(df_track)} ======= ")
-    print(f"\n ======= Volatility of the strategy: {p2.MDD(df_track)} ======= ")
+    df_ret_market = df_market.iloc[36:]
+    df_track_market = df_ret_market.add(1).fillna(1).cumprod() * 100
+    df_ret_market = pd.DataFrame(df_ret_market)
+    print(f"\n\n ======= MARKET ======= \n")
+    print(f"======= Average return of the market: {p2.average_return(df_ret_market)} ======= ")
+    print(f"======= Volatility of the market: {p2.volatility(df_ret_market)} ======= ")
+    print(f"======= VaR of the market: {p2.VaR(df_ret_market)} ======= ")
+    print(f"======= CVaR of the market: {p2.CVaR(df_ret_market)} ======= ")
+    print(f"======= MDD of the market: {p2.MDD(df_ret_market)} ======= ")
 
-    df_track = df_track.sum(1).add(1).fillna(1).cumprod() * 100
-    market_port = df_market[36:].add(1).fillna(1).cumprod() * 100
-    plt.plot(df_market.index[36:], df_track, color='red', label='strategy')
-    plt.plot(df_market.index[36:], market_port, color='blue', label='market')
+    plt.plot(df_market.index[36:], df_track_strat, color='red', label='strategy')
+    plt.plot(df_market.index[36:], df_track_market, color='blue', label='market')
     plt.legend()
-    plt.show()
-
-    print("\n\n ======= Track of the strategy ======= \n")
-    print(df_track)
+    #plt.show()
     pass
 
 track()
+
+# Graph per cluster

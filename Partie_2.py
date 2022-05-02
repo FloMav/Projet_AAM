@@ -64,17 +64,17 @@ def MDD(returns: pd.DataFrame, window=None) -> float:
     return (track / peak_series - 1.0).min()
 
 
-def luck(df):
-    n_sim = 1000
-    ret_sim = np.zeros((len(df), n_sim))
-    stats_sim = np.zeros((4, n_sim))
+def luck(data, n_sim: int = 1000) -> np.ndarray:
+
+    ret_sim = np.zeros((len(data), n_sim))
+    stats_sim = np.zeros((5, n_sim))
 
     for i in range(n_sim):
-        score_t = np.random.normal(0, 1, df.shape)
-        for t in range(len(df)):
+        score_t = np.random.normal(0, 1, data.shape)
+        for t in range(len(data)):
             long = score_t[t, :] >= np.quantile(score_t[t, :], 0.5)
             short = score_t[t, :] < np.quantile(score_t[t, :], 0.5)
-            ret_sim[t, i] = np.mean(df[t, long]) - np.mean(df[t, short])
+            ret_sim[t, i] = np.mean(data[t, long]) - np.mean(data[t, short])
 
     luck_returns = pd.DataFrame(ret_sim)
 
@@ -87,18 +87,22 @@ def luck(df):
         # annualized volatility
         stats_sim[1, i] = volatility(luck_returns_2)
 
+        # VaR
+        stats_sim[2, i] = VaR(luck_returns_2)
+
         # CVaR
-        stats_sim[2, i] = CVaR(luck_returns_2)
+        stats_sim[3, i] = CVaR(luck_returns_2)
 
         # MDD
-        stats_sim[3, i] = MDD(luck_returns_2)
+        stats_sim[4, i] = MDD(luck_returns_2)
 
     #  STATISTICS LUCKY THRESHOLDS
     thresholds = np.quantile(stats_sim, 0.99, axis=1)
 
     return thresholds
 
-# Import dataframe
+
 df = pd.read_csv("Data/DATA_PROJECT.csv", index_col=0)
-df_returns = np.array(df.drop(df.columns[-1], axis=1))
-#print(luck(df_returns))
+df_returns = np.array(df.drop(df.columns[-1], axis=1).iloc[36:, :])
+print(luck(df_returns))
+
