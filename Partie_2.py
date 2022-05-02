@@ -61,11 +61,8 @@ def MDD(returns: pd.DataFrame, window=None) -> float:
         window = n
     # rolling peak values
     peak_series = track.rolling(window=window, min_periods=1).max()
-    #return (track / peak_series - 1.0).min()
-    return track.iloc[-1]
+    return (track / peak_series - 1.0).min()
 
-
-# LONG/SHORT 50/50
 
 def luck(df):
     n_sim = 1000
@@ -96,7 +93,7 @@ def luck(df):
         # MDD
         stats_sim[3, i] = MDD(luck_returns_2)
 
-    ### STATISTICS LUCKY THRESHOLDS
+    #  STATISTICS LUCKY THRESHOLDS
     thresholds = np.quantile(stats_sim, 0.99, axis=1)
 
     return thresholds
@@ -104,14 +101,4 @@ def luck(df):
 # Import dataframe
 df = pd.read_csv("Data/DATA_PROJECT.csv", index_col=0)
 df_returns = np.array(df.drop(df.columns[-1], axis=1))
-print(luck(df_returns))
-
-
-# Sharpe???
-
-
-# alpha vs. SX5E
-# for i in range(n_sim):
-# model = sm.OLS(ret_sim[:,i],sm.add_constant(market))
-# results = model.fit()
-# stats_sim[5,i]=results.params[0]*12
+#print(luck(df_returns))

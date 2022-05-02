@@ -1,59 +1,81 @@
 import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from matplotlib import pyplot as plt
+import scipy.stats as stats
+
 from sklearn import preprocessing
 from scipy.spatial.distance import pdist
-from scipy.cluster.hierarchy import linkage, fcluster
-import statsmodels.api as sm
-import numpy as np
-import scipy.stats as stats
+from scipy.cluster.hierarchy import linkage, fcluster, dendrogram
 from statsmodels.regression.rolling import RollingOLS
-from matplotlib import pyplot as plt
+
 import Sup_funcs as sf
 import Partie_2 as p2
 
 # Import dataframe
 df = pd.read_csv("Data/DATA_PROJECT.csv", index_col=0)
 corrMatrix = df.corr()
-
 df_market = df.iloc[:, -1]
 df_returns = df.drop(df.columns[-1], axis=1)
 
 
 ################################################################# STEP 1 ###############################################
 
-def clusterisation(returns_range: pd.DataFrame) -> np.ndarray:
-    """
-    :param returns_range: a data range used to create the clusters at date t
-    :return: an array of 1 and 2 with shape  (1,len(returns_range.columns))
-    """
 
-    returns_range = preprocessing.scale(returns_range, axis=1)
-    dist = pdist(returns_range.T, 'correlation')
-    output = linkage(dist, method='ward')
-    n_clust = 2
-    clusters = fcluster(output, n_clust, criterion='maxclust')
-
-    return clusters
-
-
-def dataframe_clusters() -> pd.DataFrame:
+def dataframe_clusters(graph: bool = 0) -> pd.DataFrame:
     """
     For the first date t=35, the function takes 36 lines of data to create the clusters. For the second the date t=36,
     the function takes 37 lines of datas and so on.
+    :param graph: Allows to create graph if true.
     :return: a dataframe with the clusters for each tickers at each date.
         The index starts at 31/07/2008 and there is all the columns except the market.
     """
 
     df_clust = pd.DataFrame(0, columns=df_returns.columns, index=df_returns.index[35:])
+
     for i in range(35, len(df_returns)):
-        df_clust.iloc[i - 35, :] = clusterisation(df_returns.iloc[:i, :])
+
+        returns_range = preprocessing.scale(df_returns.iloc[:i, :], axis=1)
+        dist = pdist(returns_range.T, 'correlation')
+        output = linkage(dist, method='ward')
+        n_clust = 2
+        clusters = fcluster(output, n_clust, criterion='maxclust')
+        df_clust.iloc[i - 35, :] = clusters
+
+        if graph:  # Clusters at each t
+
+            plt.figure(figsize=(10, 10))
+            plt.xlabel('Distance')
+            plt.xticks()
+            plt.yticks()
+            dendrogram(output, color_threshold=1.5, truncate_mode='level', orientation='right', leaf_font_size=10,
+                       labels=df_returns.columns)
+            plt.savefig(f'Graphs/Cluster_t/Cluster_{i}.png', bbox_inches='tight', dpi=300)
+
+    if graph:  # Clusters throughout time
+
+        label = pd.to_datetime(df_clust.index)
+        df_graph = df_clust.apply(pd.Series.value_counts, axis=1).fillna(0)
+        df_graph['Total'] = df_graph.iloc[:, 0] + df_graph.iloc[:, 1]
+        print(df_graph)
+        file_path = 'Graphs/Clusters.png'
+        plt.figure(figsize=(15, 10), dpi=80)
+        plt.plot(label, df_graph.iloc[:, 0], color='red', marker='o', label='Cluster 1')
+        plt.plot(label, df_graph.iloc[:, 1], color='blue', marker='o', label='Cluster 2')
+        plt.plot(label, df_graph.iloc[:, 2], color='green', marker='o', label='Total')
+        plt.legend()
+        plt.ylabel('Number of stocks per companies')
+        plt.title('Historical evolution of the number of stocks in the 2 clusters')
+        plt.savefig(file_path)
 
     return df_clust
 
 
-df_clusters = dataframe_clusters()
+df_clusters = dataframe_clusters(graph=False)
 
 
 ################################################################# STEP 2 ###############################################
+
 
 def z_score(df_value: pd.DataFrame) -> pd.DataFrame:
     """
@@ -81,7 +103,7 @@ def z_score(df_value: pd.DataFrame) -> pd.DataFrame:
     return df_output
 
 
-#print(z_score(df_returns.iloc[35:, :]))
+# print(z_score(df_returns.iloc[35:, :]))
 
 
 def R_MOM() -> pd.DataFrame:
@@ -182,6 +204,7 @@ df_MOM = MOM(df_R_MOM, df_S_MOM)
 
 ################################################################# STEP 3 ###############################################
 
+
 def long_short_weights() -> pd.DataFrame:
     """
     For each row r:
@@ -202,7 +225,7 @@ def long_short_weights() -> pd.DataFrame:
     """
 
     df_w = pd.DataFrame(columns=df_returns.columns, index=df_returns.index[35:])
-    #df_vol = df_returns.expanding().std().iloc[35:, :]
+    # df_vol = df_returns.expanding().std().iloc[35:, :]
     df_vol = df_returns.rolling(5).std().iloc[35:, :]
 
     for r in range(df_w.shape[0]):
@@ -217,19 +240,20 @@ def long_short_weights() -> pd.DataFrame:
                                                        equal=0)
         df_vol_2_long, df_vol_2_short = sf.pivot_table(df_MOM_2, df_vol_inter, (np.median(df_MOM_2.values),),
                                                        equal=0)
+
         ###################################################################################
 
         ############# COMPUTE THE INV VOL WEIGHT PER LONG/SHORT PER CLUSTER ###############
         def inv_vol_weight(x): return (1 / x) / np.sum((1 / x))
 
         df_inv_vol_weight_1_long = df_vol_1_long.apply(inv_vol_weight).transpose()
-        #print(df_inv_vol_weight_1_long)
+        # print(df_inv_vol_weight_1_long)
         df_inv_vol_weight_1_short = df_vol_1_short.apply(inv_vol_weight).transpose() * -1
-        #print(df_inv_vol_weight_1_short.sum())
+        # print(df_inv_vol_weight_1_short.sum())
         df_inv_vol_weight_2_long = df_vol_2_long.apply(inv_vol_weight).transpose()
-        #print(df_inv_vol_weight_2_long.sum())
+        # print(df_inv_vol_weight_2_long.sum())
         df_inv_vol_weight_2_short = df_vol_2_short.apply(inv_vol_weight).transpose() * -1
-        #print(df_inv_vol_weight_2_short.sum())
+        # print(df_inv_vol_weight_2_short.sum())
         ###################################################################################
 
         df_weights_inter = pd.concat([df_inv_vol_weight_1_long, df_inv_vol_weight_1_short,
@@ -243,11 +267,14 @@ def long_short_weights() -> pd.DataFrame:
 
 df_weights = long_short_weights()
 
-# check si les poids somment bien à 1 au niveau global
+
+# Check weight sum equal 1
 # for i in range(len(df_weights)):
 #      print(df_weights.iloc[i,:].sum())
 
 ################################################################# STEP 4 ###############################################
+
+
 def global_weights() -> pd.DataFrame:
     """
     For each row r:
@@ -260,14 +287,13 @@ def global_weights() -> pd.DataFrame:
     df_gw = pd.DataFrame(columns=df_returns.columns, index=df_returns.index[35:])
 
     for r in range(df_gw.shape[0]):
-
         df_clust_inter = df_clusters.iloc[[r]]
         df_w_inter = df_weights.iloc[[r]]
 
         df_w_1, df_w_2 = sf.pivot_table(df_clust_inter, df_w_inter, (1, 2))
 
         ############# COMPUTE THE INV VOL WEIGHT PER LONG/SHORT PER CLUSTER ###############
-        def gw(x): return x * x.shape/46
+        def gw(x): return x * x.shape / 46
 
         df_gw_1 = df_w_1.transpose().apply(gw).transpose()
         df_gw_2 = df_w_2.transpose().apply(gw).transpose()
@@ -281,36 +307,34 @@ def global_weights() -> pd.DataFrame:
 
 
 df_global_weights = global_weights()
-#df_global_weights.to_csv('Data/gw.csv')
-#print(df_global_weights)
 
-# # check si les poids somment bien à 1 au niveau global
+
+# Check global weight sum equal 1
 # for i in range(len(df_global_weights)):
 #      print(df_global_weights.iloc[i, :].sum())
 
 ################################################################# STEP 5 ###############################################
 
+
 def track():
     df_ret = df_returns.iloc[36:, :]
     df_g_w = df_global_weights.shift().dropna(axis=0)
     df_track = df_g_w * df_ret
+
+    print(f"\n ======= Average return of the strategy: {p2.average_return(df_track)} ======= ")
+    print(f"\n ======= Volatility of the strategy: {p2.volatility(df_track)} ======= ")
+    print(f"\n ======= VaR of the strategy: {p2.CVaR(df_track)} ======= ")
+    print(f"\n ======= Volatility of the strategy: {p2.MDD(df_track)} ======= ")
+
     df_track = df_track.sum(1).add(1).fillna(1).cumprod() * 100
     market_port = df_market[36:].add(1).fillna(1).cumprod() * 100
     plt.plot(df_market.index[36:], df_track, color='red', label='strategy')
     plt.plot(df_market.index[36:], market_port, color='blue', label='market')
     plt.legend()
-    #plt.show()
+    plt.show()
+
+    print("\n\n ======= Track of the strategy ======= \n")
     print(df_track)
     pass
 
-
 track()
-df_ret = df_returns.iloc[36:, :]
-df_g_w = df_global_weights.shift().dropna(axis=0)
-tr = df_g_w * df_ret
-
-print(p2.average_return(tr))
-print(p2.volatility(tr))
-print(p2.CVaR(tr))
-print(p2.MDD(tr))
-
